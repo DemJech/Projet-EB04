@@ -24,3 +24,7 @@ La deuxième RPI aura a sa charge la récupération des fichiers côté NRT et l
 Si une différence de température trop grande est détecté entre l'intérieur et l'extérieur, la fenêtre se ferme ou s'ouvre.
 
 ![Schéma de fonctionnement de l'application station météorologique](Schema_CDG.jpg)
+
+## Bonus : IHM
+
+Intégration d'une IHM permettant de monitorer l'installation. Soit depuis la Raspberry Pi interne soit une interface Web.
