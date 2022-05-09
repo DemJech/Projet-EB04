@@ -6,6 +6,11 @@
 
 ## Synthèse du cours
 
+### Choisir une API
+
+- RTLinux
+- XenomaiRTDM
+
 ## Annotation des lib Python
 
 ### Librairies à Traduire en C RT
