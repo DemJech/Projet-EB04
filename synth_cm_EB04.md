@@ -246,4 +246,67 @@ Fonction de terminaison
 
 Supprimer les structures mises en places pour servir les requêtes
 
-CM 7 Diapo 5
+Déclaration dans la macros module_exit
+
+### Programmation d'un module
+
+`#include <linux/init.h>`
+`#include <linux/module.h>`
+MODULE_LICENSE("GPL");
+
+static int __init A(void) {
+  ...
+  printk(KERN_ALERT "from %s : COUCOU.", THIS_MODULE->name);
+  ...}
+
+static void __exit B(void) {...}
+
+module_init(A);
+module_exit(B);
+
+Les modules sont localisés dans `/proc/modules` et accessibles via `lsmod`
+
+Avantages :
+ - Seul les app les + utilisées sont chargées statiquement
+ - les pilotes de périphériques sont des modules le + svt
+ - Les modules sont modifiables sans recompilation du noyau
+
+Les sorties d'un module sont archivées dans `/var/log/message`
+
+### Documentation
+
+Fonctions utiles, définies dans `#include <linux/module.h>`, accessible avec
+la commande `modinfo Nom_Module.ko`:
+ - MODULE_AUTHOR();
+ - MODULE_VERSION();
+ - MODULE_DESCRIPTION();
+ - MODULE_SUPPORTED_DEVICE();
+
+### Passage d'arguments au chargement du module
+
+Instanciation en C : `#include <linux/moduleparam.h>` et `module_param(nom, type, permission)`
+Déclaration en Bash : `insmod mymodule.ko myvariable=10`
+Pour enrichir modinfo : `MODULE_PARAM_DESC(nom, "description");`
+
+## CM n°8 : Pilotes de périphériques (Device Drivers)
+
+Drivers : interface logicielle entre l'OS et le périphérique
+
+3 types de pilotes :
+ - caractère : flot d'octet e.g. : console, port série, port parallèle
+ - bloc : 1 k octet
+ - réseau
+
+ls -l /dev/ttyS0
+
+-> permission ___ ___ majeur, mineur date nom_du_fic
+
+majeur : le pilote
+mineur : l'instance
+
+### Pilote caractère : identification
+
+En C : dans `<linux/kdev_t.h>`
+ - `MAJOR(dev_t dev)` retourne le majeur de dev (int)
+ - `MINOR(dev_t dev)` retourne le mineur de dev (int)
+ - `MKDEV(int major, int minor)` retourne un objet de type dev_t
