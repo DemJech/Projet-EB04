@@ -155,69 +155,69 @@ static struct rtdm_device my_rt_device = {
 
 static int __init init_driver_oscillateur (void)
 {
-    int err;
+	int err;
 
-    rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
+	rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
 
-    if ((err = gpio_request(GPIO_DHT11, THIS_MODULE->name)) != 0) {
-        return err;
-    }
-    if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms
-        gpio_free(GPIO_DHT11);
-        return err;
-    }
-    rtdm_task_wait_period(200000000);
+	if ((err = gpio_request(GPIO_DHT11, THIS_MODULE->name)) != 0) {
+		return err;
+	}
+	if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms 
+		gpio_free(GPIO_DHT11);
+		return err;
+	}
+	rtdm_task_wait_period(200000000);
 
-    if ((err = gpio_direction_output(GPIO_DHT11, 0)) != 0) { //Envoi 0 18ms pour Start
-        gpio_free(GPIO_DHT11);
-        return err;
-    }
-    rtdm_task_wait_period(180000000);
+	if ((err = gpio_direction_output(GPIO_DHT11, 0)) != 0) { //Envoi 0 18ms pour Start
+		gpio_free(GPIO_DHT11);
+		return err;
+	}
+	rtdm_task_wait_period(180000000);
 
-    if ((err = gpio_direction_input(GPIO_DHT11)) != 0) { //Mise en mode lecture
-        gpio_free(GPIO_DHT11);
-        return err;
-    }
+	if ((err = gpio_direction_input(GPIO_DHT11)) != 0) { //Mise en mode lecture
+		gpio_free(GPIO_DHT11);
+		return err;
+	}
 
-    rtdm_task_wait_period(1000000000); //Courte attente
+	rtdm_task_wait_period(1000000000); //Courte attente
 
-    count = 0;
+	count = 0;
 
-    while (gpio_get_value(GPIO_DHT11) != 0) {
-    	count++;
-    	if (count > MAX_CNT) {
-    		rtdm_printk(KERN_INFO "pullup by host 20-40us failed\n");
-    		return none;
-    	}
-    }
+	while (gpio_get_value(GPIO_DHT11) != 0) {
+		count++;
+		if (count > MAX_CNT) {
+			rtdm_printk(KERN_INFO "pullup by host 20-40us failed\n");
+			return none;
+		}
+	}
 
-    int pulse_cnt[2*PULSES_CNT];
-    int fix_crc = FALSE;
+	int pulse_cnt[2*PULSES_CNT];
+	int fix_crc = FALSE;
 
-    for (i=0; i<=(2*PULSES_CNT); i+=2) {
-    	while (gpio_get_value(GPIO_DHT11) == FALSE) {
-    		pulse_cnt[i] += 1;
-    		if (pulse_cnt[i] > MAX_CNT) {
-     			rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
-    			return none;
-    		}
-    	}
-    	while (gpio_get_value(GPIO_DHT11) != 0) {
-    		pulse_cnt[i+1] += 1;
-    		if (pulse_cnt[i+1] > MAX_CNT) {
-    			if (i == 2*(PULSES_CNT-1)) {
-     			}
-     			else {
-     				rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
-    				return none;
-    			}
-    		}
-    	}
-    }
-    int total_cnt = 0;
-
+	for (i=0; i<=(2*PULSES_CNT); i+=2) {
+		while (gpio_get_value(GPIO_DHT11) == FALSE) {
+			pulse_cnt[i] += 1;
+			if (pulse_cnt[i] > MAX_CNT) {
+				rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
+				return none;   		
+			}
+		}
+		while (gpio_get_value(GPIO_DHT11) != 0) {
+			pulse_cnt[i+1] += 1;
+			if (pulse_cnt[i+1] > MAX_CNT) {
+				if (i == 2*(PULSES_CNT-1)) {
+				}
+				else {
+					rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
+					return none;   	
+				}	
+			}
+		}  	    	
+	}
+	int total_cnt = 0;
+	
 	for (i=2; i<=(2*PULSES_CNT); i+=2) {
-			total_cnt += pulse_cnt[i];
+		total_cnt += pulse_cnt[i];
 	}
 
 	int average_cnt = total_cnt/(PULSES_CNT-1); //Mesure la moyenne des signaux a l'état bas et à l'état haut
@@ -267,13 +267,15 @@ static int __init init_driver_oscillateur (void)
 	if (data4 == ((data0 + data1 + data2 + data3) & 0xFF)) {
 		int humi = data0;
 		int temp = data2;
+
 	}
 	else {
 		rtdm_printk(KERN_INFO "checksum error \n");
 		return none;
 	}
 
-	return humi, temp;
+	rtdm_printk(KERN_INFO "humi = %d% , temp = %d°C \n", humi, temp);
+	return humi, temp; 
 
     if ( (err = rtdm_task_init(&task_desc, "rtdm-oscillateur-task", task_oscillateur, NULL, 30, periode_us*1000)) ) {
          rtdm_printk(KERN_INFO "%s.%s() : error rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
