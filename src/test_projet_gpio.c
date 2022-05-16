@@ -224,53 +224,50 @@ static int __init init_driver_oscillateur (void)
 
 	char data[PULSES_CNT];
 
+	// En comparant avec moyenne, si état haut > état bas, c'est un 1
+	// Sépare les 41 caractères de la chaine en 5 octets
 	int m=0;
 	int data0, data1, data2, data3, data4;
-	int pow=1;
-	for (i=3; i<=(2*PULSES_CNT); i+=2) {	
+	for (i=3; i<=(2*PULSES_CNT); i+=2) {
 		int nb;
-		
-		// En comparant avec moyenne, si état haut > état bas c'est un 1, sinon c'est un 0
-		if (pulse_cnt[i] > average_cnt) { 
+		if (pulse_cnt[i] > average_cnt) {
 			nb = 1;
 		}
 		else {
 			nb = 0;
 		}
-		
-		// Sépare les 41 caractères de la chaine en 5 octets séparés data0, data1, data2, data3, data4
-		if (m/8 == 0) { 	
-			data0 += nb*pow;
+		if (m/8 == 0) {
+			data0 += nb << (m%8);
 		}
 		else if (m/8 == 1) {
-			data1 += nb*pow;
-		}		
+			data1 += nb << (m%8);
+		}
 		else if (m/8 == 2) {
-			data2 += nb*pow;
+			data2 += nb << (m%8);
 		}
 		else if (m/8 == 3) {
-			data3 += nb*pow;
+			data3 += nb << (m%8);
 		}
 		else if (m/8 == 4) {
-			data4 += nb*pow;
-		}		
+			data4 += nb << (m%8);
+		}
 		m++;
-		pow = pow*2;
 	}
 
-	/*if ((fix_crc == TRUE) && (data4 != ((data0 + data1 + data2 + data3) & 0xFF)) {
+	if ((fix_crc == TRUE) && (data4 != ((data0 + data1 + data2 + data3) & 0xFF)) {
 		data4 = data4 ^ 0x01; //Pair ou impair ?
 		if ((data4 & 0x01) == TRUE) {
 			data = ; //a completer (ligne 182 du seeed_dht.py)
-		}			
+		}
 		else {
 			data = ; //a completer (ligne 182 du seeed_dht.py)
 		}
-	}*/
+	}
 
 	if (data4 == ((data0 + data1 + data2 + data3) & 0xFF)) {
-		int humi = data0; //Affecte l'octet data0 pour l'info de l'humidité
-		int temp = data2; //Affecte l'octet data2 pour l'info de la température	
+		int humi = data0;
+		int temp = data2;
+
 	}
 	else {
 		rtdm_printk(KERN_INFO "checksum error \n");
@@ -279,7 +276,6 @@ static int __init init_driver_oscillateur (void)
 
 	rtdm_printk(KERN_INFO "humi = %d% , temp = %d°C \n", humi, temp);
 	return humi, temp; 
-	
 
     if ( (err = rtdm_task_init(&task_desc, "rtdm-oscillateur-task", task_oscillateur, NULL, 30, periode_us*1000)) ) {
          rtdm_printk(KERN_INFO "%s.%s() : error rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
@@ -310,4 +306,3 @@ static void __exit exit_driver_oscillateur (void)
 module_init(init_driver_oscillateur);
 module_exit(exit_driver_oscillateur);
 MODULE_LICENSE("GPL");
-
