@@ -21,3 +21,9 @@ static void __exit cloture(void) {
 
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver closed.", THIS_MODULE->name);
 }
+<<<<<<< HEAD
+
+module_init(initialisation);
+module_exit(cloture);
+=======
+>>>>>>> 981b89b60030ce748b748561f85da4e5b272b574
