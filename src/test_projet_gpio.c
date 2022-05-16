@@ -162,27 +162,27 @@ static int __init init_driver_oscillateur (void)
     if ((err = gpio_request(GPIO_DHT11, THIS_MODULE->name)) != 0) {
         return err;
     }
-    if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms 
+    if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms
         gpio_free(GPIO_DHT11);
         return err;
     }
     rtdm_task_wait_period(200000000);
-    
+
     if ((err = gpio_direction_output(GPIO_DHT11, 0)) != 0) { //Envoi 0 18ms pour Start
         gpio_free(GPIO_DHT11);
         return err;
     }
     rtdm_task_wait_period(180000000);
-    
+
     if ((err = gpio_direction_input(GPIO_DHT11)) != 0) { //Mise en mode lecture
         gpio_free(GPIO_DHT11);
         return err;
     }
-    
+
     rtdm_task_wait_period(1000000000); //Courte attente
-    
+
     count = 0;
-    
+
     while (gpio_get_value(GPIO_DHT11) != 0) {
     	count++;
     	if (count > MAX_CNT) {
@@ -190,16 +190,16 @@ static int __init init_driver_oscillateur (void)
     		return none;
     	}
     }
-    
+
     int pulse_cnt[2*PULSES_CNT];
     int fix_crc = FALSE;
-    
+
     for (i=0; i<=(2*PULSES_CNT); i+=2) {
     	while (gpio_get_value(GPIO_DHT11) == FALSE) {
     		pulse_cnt[i] += 1;
     		if (pulse_cnt[i] > MAX_CNT) {
      			rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
-    			return none;   		
+    			return none;
     		}
     	}
     	while (gpio_get_value(GPIO_DHT11) != 0) {
@@ -209,27 +209,26 @@ static int __init init_driver_oscillateur (void)
      			}
      			else {
      				rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
-    				return none;   	
-    			}	
+    				return none;
+    			}
     		}
-    	}  	    	
+    	}
     }
     int total_cnt = 0;
-	
+
 	for (i=2; i<=(2*PULSES_CNT); i+=2) {
 			total_cnt += pulse_cnt[i];
 	}
-	
+
 	int average_cnt = total_cnt/(PULSES_CNT-1); //Mesure la moyenne des signaux a l'état bas et à l'état haut
-	
+
 	char data[PULSES_CNT];
-	
+
 	// En comparant avec moyenne, si état haut > état bas, c'est un 1
-	// Sépare les 41 caractères de la chaine en 5 octets 
+	// Sépare les 41 caractères de la chaine en 5 octets
 	int m=0;
 	int data0, data1, data2, data3, data4;
-	int pow=1;
-	for (i=3; i<=(2*PULSES_CNT); i+=2) {	
+	for (i=3; i<=(2*PULSES_CNT); i+=2) {
 		int nb;
 		if (pulse_cnt[i] > average_cnt) {
 			nb = 1;
@@ -238,44 +237,43 @@ static int __init init_driver_oscillateur (void)
 			nb = 0;
 		}
 		if (m/8 == 0) {
-			data0 += nb*pow;
+			data0 += nb << (m%8);
 		}
 		else if (m/8 == 1) {
-			data1 += nb*pow;
-		}		
+			data1 += nb << (m%8);
+		}
 		else if (m/8 == 2) {
-			data2 += nb*pow;
+			data2 += nb << (m%8);
 		}
 		else if (m/8 == 3) {
-			data3 += nb*pow;
+			data3 += nb << (m%8);
 		}
 		else if (m/8 == 4) {
-			data4 += nb*pow;
-		}		
+			data4 += nb << (m%8);
+		}
 		m++;
-		pow = pow*2;
 	}
-	
+
 	if ((fix_crc == TRUE) && (data4 != ((data0 + data1 + data2 + data3) & 0xFF)) {
 		data4 = data4 ^ 0x01; //Pair ou impair ?
 		if ((data4 & 0x01) == TRUE) {
 			data = ; //a completer (ligne 182 du seeed_dht.py)
-		}			
+		}
 		else {
 			data = ; //a completer (ligne 182 du seeed_dht.py)
 		}
-	}		
-	
+	}
+
 	if (data4 == ((data0 + data1 + data2 + data3) & 0xFF)) {
 		int humi = data0;
-		int temp = data2;		
+		int temp = data2;
 	}
 	else {
 		rtdm_printk(KERN_INFO "checksum error \n");
 		return none;
 	}
-	
-	return humi, temp; 
+
+	return humi, temp;
 
     if ( (err = rtdm_task_init(&task_desc, "rtdm-oscillateur-task", task_oscillateur, NULL, 30, periode_us*1000)) ) {
          rtdm_printk(KERN_INFO "%s.%s() : error rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
@@ -306,4 +304,3 @@ static void __exit exit_driver_oscillateur (void)
 module_init(init_driver_oscillateur);
 module_exit(exit_driver_oscillateur);
 MODULE_LICENSE("GPL");
-
