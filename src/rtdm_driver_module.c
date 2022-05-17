@@ -30,7 +30,7 @@ struct Measures {      //Structure de donnée obtenue par le capteur DHT11
 struct Order {        //Structure de données des paramètres de fonctionnement du driver
   int temperature_min;
   int temperature_max;
-  int periode_ms = 1000;
+  int periode_ms = 5000;
 } order;
 
 rtdm_task_t task_desc;  //Definition de la tâche
@@ -40,6 +40,10 @@ void task_measure(void *arg) {
   while(!rtdm_task_should_stop()){   //Tant que rien n'a été fait pour arrêter la boucle
     //Mesurer la température et l'humidité
 
+    //*****TEST*****//
+    rtdm_mutex_lock(&my_mtx);
+    measures.temperature ^= 0x01;
+    measures.humidity ^= 0x01;
     rtdm_task_wait_period(NULL);    //Attendre une période
   }
 }
@@ -63,7 +67,7 @@ static int my_read_nrt_function  (struct rtdm_fd *fd, void __user *buffer, size_
       if (rtdm_safe_copy_to_user(fd, buffer, &measures, lg) != 0) {
         rtdm_printk(KERN_INFO "%s.%s()\n : Error in the copy of the measured data.", THIS_MODULE->name, __FUNCTION__);
         rtdm_mutex_unlock(&my_mtx);
-        return -EFAULT;
+        return -1;
       }
   }
 
@@ -144,6 +148,9 @@ static int __init initialisation(void) {
 
   rtdm_mutex_init(&my_mtx);         //Initialisation du mutex
   rtdm_dev_register(&my_rt_device); //Initialisation du device
+
+  measures.temperature = 0;
+  measures.humidity = 10;
 
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver initialised.", THIS_MODULE->name);
   return 0;
