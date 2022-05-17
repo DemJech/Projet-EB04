@@ -22,6 +22,17 @@ MODULE_AUTHOR("Brendan Signarbieux & Tom Ladune");
 MODULE_VERSION("Alpha 1.0");
 MODULE_DESCRIPTION("This module measures temperature and humidity thanks to the DHT11.");
 
+struct Measures {      //Structure de donnée obtenue par le capteur DHT11
+    int temperature;
+    int humidity;
+} measures;
+
+struct Order {        //Structure de données des paramètres de fonctionnement du driver
+  int temperature_min;
+  int temperature_max;
+  int periode_ms = 1000;
+} order;
+
 rtdm_task_t task_desc;  //Definition de la tâche
 static rtdm_mutex_t my_mtx; //Definition du mutex
 
@@ -33,14 +44,12 @@ void task_measure(void *arg) {
   }
 }
 
-static int my_open_function(struct rtdm_fd *fd, int flags)
-{
+static int my_open_function(struct rtdm_fd *fd, int flags) {
   rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
   return 0;
 }
 
-static void my_close_function(struct rtdm_fd *fd)
-{
+static void my_close_function(struct rtdm_fd *fd) {
   rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
 }
 
@@ -50,10 +59,11 @@ static int my_read_nrt_function  (struct rtdm_fd *fd, void __user *buffer, size_
 
   rtdm_mutex_lock(&my_mtx);
 
-  if (lg > 0) {
-      if (rtdm_safe_copy_to_user(fd, buffer, &periode_char, lg) != 0) {
-          rtdm_mutex_unlock(&my_mtx);
-          return -EFAULT;
+  if (lg == sizeof(Measures)) {
+      if (rtdm_safe_copy_to_user(fd, buffer, &measures, lg) != 0) {
+        rtdm_printk(KERN_INFO "%s.%s()\n : Error in the copy of the measured data.", THIS_MODULE->name, __FUNCTION__);
+        rtdm_mutex_unlock(&my_mtx);
+        return -EFAULT;
       }
   }
 
@@ -67,10 +77,34 @@ static int my_write_nrt_function(struct rtdm_fd *fd, const void __user *buffer, 
 {
   rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
 
-  rtdm_mutex_lock(&my_mtx);
+  rtdm_mutex_lock(&my_mtx); //Demande du mutex pour ecrire dans les structures
 
+  if (lg == sizeof(Order)) {
+    Order neworder;
+    neworder.temperature_min = 0;
+    neworder.temperature_max = 20;
+    neworder.periode_ms = 1000;
+    if (rtdm_safe_copy_from_user(fd, &neworder, buffer, lg) != 0) {
+      printk(KERN_INFO "%s.%s() : Error in copy of orders", THIS_MODULE->name, __FUNCTION__);
+      rtdm_mutex_unlock(&my_mtx);
+      return -2;
+    }
+    if (neworder.temperature_max <= neworder.temperature_min) {
+      printk(KERN_INFO "%s.%s() : temperature_max <= temperature_min", THIS_MODULE->name, __FUNCTION__);
+      rtdm_mutex_unlock(&my_mtx);
+      return -3;
+    }
+    order.temperature_min = neworder.temperature_min;
+    order.temperature_max = neworder.temperature_max;
+    order.periode_ms = order.periode_ms;
+    rtdm_task_set_period(&task_desc, 0, periode_ms*1000000);
+  }
+  else {
+    printk(KERN_INFO "%s.%s() : message is not equivalent to 3 int.", THIS_MODULE->name, __FUNCTION__);
+    rtdm_mutex_unlock(&my_mtx);
+    return -1;
+  }
   rtdm_mutex_unlock(&my_mtx);
-
   return lg;
 }
 
@@ -96,22 +130,12 @@ static struct rtdm_device my_rt_device = {
     .label  = "rtdm_DHT11_%d",
 };
 
-struct Mesures mesures = {
-    int temperature;
-    int humidity;
-}
-
-struct Order order = {
-  int temperature_max;
-  int periode_ms;
-}
-
 static int __init initialisation(void) {
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver launched.", THIS_MODULE->name);
 
 
   //Initialisation de la tâche
-  if ( (err = rtdm_task_init(&task_desc, "rtdm-measure-task", task_measure, NULL, 30, periode_us*1000)) ) {
+  if ( (err = rtdm_task_init(&task_desc, "rtdm-measure-task", task_measure, NULL, 30, periode_ms*1000000)) ) {
          rtdm_printk(KERN_INFO "%s.%s() : error rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
   }
   else {
@@ -128,17 +152,10 @@ static int __init initialisation(void) {
 static void __exit cloture(void) {
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver currently closing.", THIS_MODULE->name);
 
-  //Libération du GPIO
-  gpio_free(GPIO_DHT11);
-
-  //Destruction de la tâche
-  rtdm_task_destroy(&task_desc);
-
-  //Destruction du mutex
-  rtdm_mutex_destroy(&my_mtx);
-
-  //Destruction du device
-  rtdm_dev_unregister(&my_rt_device);
+  gpio_free(GPIO_DHT11);              //Libération du GPIO
+  rtdm_task_destroy(&task_desc);      //Destruction de la tâche
+  rtdm_mutex_destroy(&my_mtx);        //Destruction du mutex
+  rtdm_dev_unregister(&my_rt_device); //Destruction du device
 
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver closed.", THIS_MODULE->name);
 }
