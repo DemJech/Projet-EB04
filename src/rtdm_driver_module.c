@@ -22,14 +22,14 @@ MODULE_AUTHOR("Brendan Signarbieux & Tom Ladune");
 MODULE_VERSION("Alpha 1.0");
 MODULE_DESCRIPTION("This module measures temperature and humidity thanks to the DHT11.");
 
-struct Measures {      //Structure de donnée obtenue par le capteur DHT11
-    int temperature;
-    int humidity;
+static struct Measures {      //Structure de donnée obtenue par le capteur DHT11
+    int temperature = 0;
+    int humidity = 0;
 } measures;
 
-struct Order {        //Structure de données des paramètres de fonctionnement du driver
-  int temperature_min;
-  int temperature_max;
+static struct Order {        //Structure de données des paramètres de fonctionnement du driver
+  int temperature_min = 10;
+  int temperature_max = 20;
   int periode_ms = 5000;
 } order;
 
@@ -37,13 +37,14 @@ rtdm_task_t task_desc;  //Definition de la tâche
 static rtdm_mutex_t my_mtx; //Definition du mutex
 
 void task_measure(void *arg) {
-  while(!rtdm_task_should_stop()){   //Tant que rien n'a été fait pour arrêter la boucle
+  while(!rtdm_task_should_stop()) {   //Tant que rien n'a été fait pour arrêter la boucle
     //Mesurer la température et l'humidité
 
     //*****TEST*****//
     rtdm_mutex_lock(&my_mtx);
     measures.temperature ^= 0x01;
     measures.humidity ^= 0x01;
+    rtdm_printk("%s.%s() : temp=%d, hum=%d\n", THIS_MODULE->name, __FUNCTION__, measures.temperature, measures.humidity);
     rtdm_task_wait_period(NULL);    //Attendre une période
   }
 }
