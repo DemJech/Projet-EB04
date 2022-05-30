@@ -23,29 +23,30 @@ MODULE_VERSION("Alpha 1.0");
 MODULE_DESCRIPTION("This module measures temperature and humidity thanks to the DHT11.");
 
 static struct Measures {      //Structure de donnée obtenue par le capteur DHT11
-    int temperature = 0;
-    int humidity = 0;
+    int temperature;
+    int humidity;
 } measures;
 
 static struct Order {        //Structure de données des paramètres de fonctionnement du driver
-  int temperature_min = 10;
-  int temperature_max = 20;
-  int periode_ms = 5000;
+  int temperature_min;
+  int temperature_max;
+  int periode_ms;
 } order;
 
 rtdm_task_t task_desc;  //Definition de la tâche
 static rtdm_mutex_t my_mtx; //Definition du mutex
 
 void task_measure(void *arg) {
-  while(!rtdm_task_should_stop()) {   //Tant que rien n'a été fait pour arrêter la boucle
+  rtdm_printk(KERN_INFO "%s.%s(): has launched for the first time.\n", THIS_MODULE->name, __FUNCTION__);
+  while(!rtdm_task_should_stop()){
     //Mesurer la température et l'humidité
-
+    rtdm_printk(KERN_INFO "%s.%s(): will start a new measure.\n", THIS_MODULE->name, __FUNCTION__);
     //*****TEST*****//
     rtdm_mutex_lock(&my_mtx);
     measures.temperature ^= 0x01;
     measures.humidity ^= 0x01;
-    rtdm_printk("%s.%s() : temp=%d, hum=%d\n", THIS_MODULE->name, __FUNCTION__, measures.temperature, measures.humidity);
-    rtdm_task_wait_period(NULL);    //Attendre une période
+    rtdm_printk(KERN_INFO "%s.%s() : temp=%d, hum=%d\n", THIS_MODULE->name, __FUNCTION__, measures.temperature, measures.humidity);
+    rtdm_task_wait_period(NULL);
   }
 }
 
@@ -64,7 +65,7 @@ static int my_read_nrt_function  (struct rtdm_fd *fd, void __user *buffer, size_
 
   rtdm_mutex_lock(&my_mtx);
 
-  if (lg == sizeof(Measures)) {
+  if (lg == sizeof(struct Measures)) {
       if (rtdm_safe_copy_to_user(fd, buffer, &measures, lg) != 0) {
         rtdm_printk(KERN_INFO "%s.%s()\n : Error in the copy of the measured data.", THIS_MODULE->name, __FUNCTION__);
         rtdm_mutex_unlock(&my_mtx);
@@ -84,11 +85,11 @@ static int my_write_nrt_function(struct rtdm_fd *fd, const void __user *buffer, 
 
   rtdm_mutex_lock(&my_mtx); //Demande du mutex pour ecrire dans les structures
 
-  if (lg == sizeof(Order)) {
-    Order neworder;
+  if (lg == sizeof(struct Order)) {
+    struct Order neworder;
     neworder.temperature_min = 0;
     neworder.temperature_max = 20;
-    neworder.periode_ms = 1000;
+    neworder.periode_ms = 2000;
     if (rtdm_safe_copy_from_user(fd, &neworder, buffer, lg) != 0) {
       printk(KERN_INFO "%s.%s() : Error in copy of orders", THIS_MODULE->name, __FUNCTION__);
       rtdm_mutex_unlock(&my_mtx);
@@ -102,7 +103,7 @@ static int my_write_nrt_function(struct rtdm_fd *fd, const void __user *buffer, 
     order.temperature_min = neworder.temperature_min;
     order.temperature_max = neworder.temperature_max;
     order.periode_ms = order.periode_ms;
-    rtdm_task_set_period(&task_desc, 0, periode_ms*1000000);
+    rtdm_task_set_period(&task_desc, 0, order.periode_ms*1000000);
   }
   else {
     printk(KERN_INFO "%s.%s() : message is not equivalent to 3 int.", THIS_MODULE->name, __FUNCTION__);
@@ -138,20 +139,27 @@ static struct rtdm_device my_rt_device = {
 static int __init initialisation(void) {
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver launched.", THIS_MODULE->name);
 
-
+  int err;
   //Initialisation de la tâche
-  if ( (err = rtdm_task_init(&task_desc, "rtdm-measure-task", task_measure, NULL, 30, periode_ms*1000000)) ) {
+  measures.temperature = 0;
+  measures.humidity = 10;
+
+  order.temperature_min = 10;
+  order.temperature_max = 20;
+  order.periode_ms = 2000;
+
+  if ((err = gpio_request(GPIO_DHT11, THIS_MODULE->name)) != 0) {
+		return err;
+	}
+  rtdm_mutex_init(&my_mtx);         //Initialisation du mutex
+  rtdm_dev_register(&my_rt_device); //Initialisation du device
+
+  if ( (err = rtdm_task_init(&task_desc, "rtdm-measure-task", task_measure, NULL, 30, order.periode_ms*1000000)) ) {
          rtdm_printk(KERN_INFO "%s.%s() : error rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
   }
   else {
     rtdm_printk(KERN_INFO "%s.%s() : success rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
   }
-
-  rtdm_mutex_init(&my_mtx);         //Initialisation du mutex
-  rtdm_dev_register(&my_rt_device); //Initialisation du device
-
-  measures.temperature = 0;
-  measures.humidity = 10;
 
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver initialised.", THIS_MODULE->name);
   return 0;

@@ -20,7 +20,7 @@ void write_file(int sockfd, struct sockaddr_in addr) {
     n = recvfrom(sockfd, buffer, SIZE, 0, (struct sockaddr*) &addr, &addr_size);
 
     if (strcmp(buffer, "END") == 0) {
-      printf("%s\t%d", buffer, strcmp(buffer, "END"));
+      printf("%s\t%d", buffer, strcmp(buffer, "END"));ssh ss
       break;
       return;
     }
