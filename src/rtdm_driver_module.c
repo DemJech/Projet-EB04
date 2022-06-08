@@ -16,11 +16,17 @@
 #include <rtdm/driver.h>
 
 #define GPIO_DHT11 6
+#define TRUE 1
+#define FALSE 0
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Brendan Signarbieux & Tom Ladune");
 MODULE_VERSION("Alpha 1.0");
 MODULE_DESCRIPTION("This module measures temperature and humidity thanks to the DHT11.");
+
+static int count = 0;
+static int MAX_CNT = 320;
+static int PULSES_CNT = 41;
 
 static struct Measures {      //Structure de donnée obtenue par le capteur DHT11
     int temperature;
@@ -47,46 +53,47 @@ void task_measure(void *arg) {
     measures.humidity ^= 0x01;
     rtdm_printk(KERN_INFO "%s.%s() : temp=%d, hum=%d\n", THIS_MODULE->name, __FUNCTION__, measures.temperature, measures.humidity);*/
     int err;
-  	long unsigned int* p20ms, p18ms, p20us;
+  	//unsigned long tempo20ms, tempo18ms, tempo30us;
 
-  	*p20ms = 200000000L;
-  	*p18ms = 180000000L;
-    *p20us = 300000L;
+  	//tempo20ms = 20000000L;
+  	//tempo18ms = 18000000L;
+    //tempo30us = 30000L;
   	rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
-
-  	if ((err = gpio_request(GPIO_DHT11, THIS_MODULE->name)) != 0) {
-  		exit(err);
-  	}
 
   	//MCU Start signal
   	if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms
   		gpio_free(GPIO_DHT11);
-  		exit(err);
+      rtdm_printk(KERN_ALERT "%s.%s() : error 2 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
-  	rtdm_task_wait_period(p20ms);
 
+  	rtdm_task_sleep(20000000);
+    
   	if ((err = gpio_direction_output(GPIO_DHT11, 0)) != 0) { //Envoi 0 18ms pour Start
   		gpio_free(GPIO_DHT11);
-  		exit(err);
+  		rtdm_printk(KERN_ALERT "%s.%s() : error 3 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
-  	rtdm_task_wait_period(p18ms);
 
+  	rtdm_task_sleep(18000000);
+    rtdm_printk(KERN_INFO "%s.%s() : going through error 3 & sleep\n", THIS_MODULE->name, __FUNCTION__);
   	if ((err = gpio_direction_input(GPIO_DHT11)) != 0) { //Mise en mode lecture
   		gpio_free(GPIO_DHT11);
-  		exit(err);
+  		rtdm_printk(KERN_ALERT "%s.%s() : error 4 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
 
-  	rtdm_task_wait_period(p20ms); //Courte attente
+  	rtdm_task_sleep(30000); //Courte attente
+
+    rtdm_printk(KERN_ALERT "%s.%s() : GPIO waiting for DHT11\n", THIS_MODULE->name, __FUNCTION__);
 
   	count = 0;
 
   	while (gpio_get_value(GPIO_DHT11) != 0) { //Attente de la réponse du DHT11 avec un bit à 0 (sous 20-40us)
   		count++;
   		if (count > MAX_CNT) {
-  			rtdm_printk(KERN_INFO "pullup by host 20-40us failed\n");
-  			exit(0);
+  			rtdm_printk(KERN_ALERT "%s.%s() : error : pullup by host 20-40us failed\n", THIS_MODULE->name, __FUNCTION__);
   		}
   	}
+
+    rtdm_printk(KERN_ALERT "%s.%s() : GPIO will start receiving data\n", THIS_MODULE->name, __FUNCTION__);
 
   	int pulse_cnt[2*PULSES_CNT];
   	int fix_crc = FALSE;
@@ -96,8 +103,7 @@ void task_measure(void *arg) {
   		while (gpio_get_value(GPIO_DHT11) == FALSE) {
   			pulse_cnt[i] += 1;
   			if (pulse_cnt[i] > MAX_CNT) {
-  				rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
-  				exit(0);
+  				rtdm_printk(KERN_ALERT "%s.%s() : error : pullup by DHT timeout %d\n", THIS_MODULE->name, __FUNCTION__, i);
   			}
   		}
   		while (gpio_get_value(GPIO_DHT11) != 0) {
@@ -106,8 +112,7 @@ void task_measure(void *arg) {
   				if (i == 2*(PULSES_CNT-1)) {
   				}
   				else {
-  					rtdm_printk(KERN_INFO "pullup by DHT timeout %d\n", i);
-  					exit(0);
+  					rtdm_printk(KERN_ALERT "%s.%s() : error : pullup by DHT timeout %d\n", THIS_MODULE->name, __FUNCTION__, i);
   				}
   			}
   		}
@@ -167,13 +172,12 @@ void task_measure(void *arg) {
     measures.temperature=-1;
 
   	if (data4 == ((data0 + data1 + data2 + data3) & 0xFF)) {
-  		humi = data0; //Affecte l'octet data0 pour l'info de l'humidité
-  		temp = data2; //Affecte l'octet data2 pour l'info de la température
+  		measures.humidity = data0; //Affecte l'octet data0 pour l'info de l'humidité
+  		measures.temperature = data2; //Affecte l'octet data2 pour l'info de la température
 
   	}
   	else {
-  		rtdm_printk(KERN_INFO "checksum error \n");
-  		exit(0);
+  		rtdm_printk(KERN_ALERT "%s.%s() : error : checksum error\n", THIS_MODULE->name, __FUNCTION__);
   	}
 
   	rtdm_printk(KERN_INFO "humi = %d% , temp = %d°C \n", measures.humidity, measures.temperature);
