@@ -37,10 +37,6 @@ static struct Order {        //Structure de données des paramètres de fonction
 static int periode_us = 1000*1000;
 module_param(periode_us, int, 0644);
 
-rtdm_task_t task_desc;
-static rtdm_mutex_t my_mtx;
-static char temperature[2] ;
-
 rtdm_task_t task_desc;  //Definition de la tâche
 static rtdm_mutex_t my_mtx; //Definition du mutex
 

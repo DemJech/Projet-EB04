@@ -10,24 +10,44 @@
 #define MSG_SIZE 4
 #define TRUE 1
 
-static struct Measures {
-  int16_t * humidity;
-  int16_t * temperature;
-};
-
 int main(int argv, int **argc) {
+
+  // Defining the IP and Port
+  char *ip = "192.168.43.201";
+  const int port = 8080;
+
+  // Defining variables
+  int server_sockfd;
+  struct sockaddr_in server_addr;
+
   int fd, ret;
   char msg[MSG_SIZE] = {0,0,0,0};
   struct Measures measures;
   FILE * fic;
+
+  fic = fopen("./data.txt", "rwt");
+  if (fic == NULL) {
+    printf("Open error %d\n", 1);
+    exit(1);
+  }
 
   fd = open("/dev/rtdm/rtdm_DHT11_0", O_RDWR);
   if (fd < 0) {
     printf("Open error %d\n", fd);
     exit(fd);
   }
-  measures.humidity = &msg[0];
-  measures.temperature = &msg[2];
+
+  // Creating a UDP socket
+  server_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+  if (server_sockfd < 0)
+  {
+    perror("[ERROR] socket error");
+    exit(1);
+  }
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = port;
+  server_addr.sin_addr.s_addr = inet_addr(ip);
+
   while(TRUE) {
     ret = read(fd, msg, sizeof(msg));
     if (ret <= 0) {
@@ -36,8 +56,13 @@ int main(int argv, int **argc) {
       exit(ret);
     }
     printf("humidity: %d.%d %%; temperature: %d.%d *C\n", msg[0], msg[1], msg[2], msg[3]);
-    fic = fopen("./data.txt", "wt");
+    fic = fopen("./data.txt", "rwt");
+    if (fic == NULL) {
+      printf("Open error %d\n", 1);
+      exit(1);
+    }
     fprintf(fic, "%d.%d;%d.%d\n", msg[0], msg[1], msg[2], msg[3]);
+    send_file_data(fp, server_sockfd, server_addr);
     fclose(fic);
     sleep(2);
   }
