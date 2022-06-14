@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 
 #define SIZE 1024
+#define TRUE 1
 
 void write_file(int sockfd, struct sockaddr_in addr) {
   FILE *fp;
@@ -20,7 +21,7 @@ void write_file(int sockfd, struct sockaddr_in addr) {
     n = recvfrom(sockfd, buffer, SIZE, 0, (struct sockaddr*) &addr, &addr_size);
 
     if (strcmp(buffer, "END") == 0) {
-      printf("%s\t%d", buffer, strcmp(buffer, "END"));ssh ss
+      printf("%s\t%d", buffer, strcmp(buffer, "END"));
       break;
       return;
     }
@@ -35,7 +36,7 @@ void write_file(int sockfd, struct sockaddr_in addr) {
 }
 
 int main(int argc, char ** argv) {
-  char *ip = "127.0.0.1";                       //Addr IP de rebouclage
+  char *ip = "192.168.43.201";                       //Addr IP de rebouclage
   int port = 8080;
 
   int server_sockfd;
@@ -50,8 +51,9 @@ int main(int argc, char ** argv) {
     exit(server_sockfd);
   }
 
+  memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
-  server_addr.sin_port = port;
+  server_addr.sin_port = htons(port);
   server_addr.sin_addr.s_addr = inet_addr(ip);
 
   e = bind(server_sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr));
@@ -61,12 +63,13 @@ int main(int argc, char ** argv) {
   }
 
   printf("[STARTING] UDP File Server started.\n");
-  write_file(server_sockfd, client_addr);
+  while (TRUE) {
+    write_file(server_sockfd, client_addr);
+    sleep(2);
+  }
 
   printf("[SUCCESS] Data transfer complete.\n");
   printf("[CLOSING] Closing the server.\n");
-
   close(server_sockfd);
-
   return 0;
 }

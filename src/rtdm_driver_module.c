@@ -15,7 +15,8 @@
 #include <rtdm/rtdm.h>
 #include <rtdm/driver.h>
 
-#define GPIO_DHT11 5
+#define GPIO_DHT11 5  //Definition du pin GPIO du capteur DHT11
+#define GPIO_SERVO 12 //Definition du pin GPIO du servo moteur
 #define TRUE 1
 #define FALSE 0
 #define MAX_CNT	85
@@ -24,7 +25,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Brendan Signarbieux & Tom Ladune");
 MODULE_VERSION("Alpha 1.0");
-MODULE_DESCRIPTION("This module measures temperature and humidity thanks to the DHT11.");
+MODULE_DESCRIPTION("This module measures temperature and humidity thanks to the DHT11 and activate the servomotor depending on the humidity treshold.");
 
 static char measures[4];
 
@@ -37,15 +38,14 @@ static struct Order {        //Structure de données des paramètres de fonction
 static int periode_us = 1000*1000;
 module_param(periode_us, int, 0644);
 
-rtdm_task_t task_desc;
-static rtdm_mutex_t my_mtx;
-static char temperature[2] ;
-
-rtdm_task_t task_desc;  //Definition de la tâche
+rtdm_task_t task_desc_dht11;  //Definition de la tâche dht11
 static rtdm_mutex_t my_mtx; //Definition du mutex
 
+static int seuil_humi = 60; //Definition du seuil d humidite demande par l utilisateur
+static char seuil_char;
+
 void task_measure(void *arg) {
-  rtdm_printk(KERN_INFO "%s.%s(): has launched for the first time.\n", THIS_MODULE->name, __FUNCTION__);
+  rtdm_printk(KERN_INFO "%s.%s(): task_measure has launched for the first time.\n", THIS_MODULE->name, __FUNCTION__);
 
   while(!rtdm_task_should_stop()){
 
@@ -56,13 +56,13 @@ void task_measure(void *arg) {
 	int err;
 
 	//MCU Start signal
-  	if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms
+  	if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 sur 20ms
 		gpio_free(GPIO_DHT11);
 		rtdm_printk(KERN_ALERT "%s.%s() : error 1 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
   	rtdm_task_sleep(20000000);
 
-  	if ((err = gpio_direction_output(GPIO_DHT11, 0)) != 0) { //Envoi 0 18ms pour Start
+  	if ((err = gpio_direction_output(GPIO_DHT11, 0)) != 0) { //Envoi 0 sur 18ms pour Start
   		gpio_free(GPIO_DHT11);
   		rtdm_printk(KERN_ALERT "%s.%s() : error 2 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
@@ -79,10 +79,7 @@ void task_measure(void *arg) {
   		rtdm_printk(KERN_ALERT "%s.%s() : error 4 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
 
-	//rtdm_printk(KERN_ALERT "%s.%s() : GPIO waiting for DHT11\n", THIS_MODULE->name, __FUNCTION__);
-
-	// Detecte chaque changement et lit donnees recues
-	for ( i = 0; i < MAX_CNT; i++ )
+	for ( i = 0; i < MAX_CNT; i++ ) // Detecte chaque changement et lit donnees recues
 	{
 		count = 0;
 		while ( gpio_get_value(GPIO_DHT11) == dernier_etat ) //attendre tant que le dernier bit recu n'a pas change
@@ -100,11 +97,9 @@ void task_measure(void *arg) {
 		if ( count == 255 )
 			break;
 
-		//ignore les 3 premieres transitions recues du dht11 (bits start) avant de recevoire les datas utiles
-		if ( (i >= 4) && (i % 2 == 0) )
+		if ( (i >= 4) && (i % 2 == 0) ) //ignore les 3 premieres transitions recues du dht11 (bits start) avant de recevoire les datas utiles
 		{
-			//envoie chaque bit dans data et les sépare en 5 octets
-			data[j / 8] <<= 1;
+			data[j / 8] <<= 1; //envoie chaque bit dans data et les sépare en 5 octets
 			if ( count > 8 )
 			{
 				data[j / 8] |= 1;
@@ -113,18 +108,50 @@ void task_measure(void *arg) {
 		}
 	}
 
-	 //Verif lecture des 40 bits (8bit x 5 ) + verif checksum
-	if ( (j >= 40)  && (data[4] == ( (data[0] + data[1] + data[2] + data[3]) & 0xFF) ) )
+	if ( (j >= 40)  && (data[4] == ( (data[0] + data[1] + data[2] + data[3]) & 0xFF) ) ) //Verif lecture des 40 bits (8bit x 5 ) + verif checksum
 	{
 		rtdm_printk(KERN_INFO "Humidite = %d.%d %% Temperature = %d.%d *C \n",data[0], data[1], data[2], data[3]);
 
 		measures[0] = data[0]; //Affecte l'octet data[0] pour l'info de l'humidité
-    measures[1] = data[1];
-  	measures[2] = data[2]; //Affecte l'octet data[2] pour l'info de la température
-    measures[3] = data[3];
+		measures[1] = data[1];
+		measures[2] = data[2]; //Affecte l'octet data[2] pour l'info de la température
+		measures[3] = data[3];
 
 	}else  {
 		rtdm_printk( "Donnee recue erronnee\n" );
+	}
+	
+	//PWM SERVO
+	uint32_t PERIODE_TOT = 20000000; //Definition periode totale du signal envoye au servo (20ms)
+	uint32_t ETAT_HAUT = 1000000; //Definition de la duree a l etat haut du signal envoye au servo (par defaut 1ms pour 0 degre d'inclinaison)	
+	int nb_tour;
+	nb_tour = 0;
+	
+	while (nb_tour < 20) 
+	{
+		if (measures[0] > seuil_humi) //Si humidite > seuil demande
+		{
+			ETAT_HAUT = 2000000; //Etat haut de la PWM a 2ms pour une inclinaison du servo de 180 degres
+
+		}else{
+			ETAT_HAUT = 1000000; //Etat haut de la PWM a 1ms pour une inclinaison du servo de 0 degre
+		}
+		
+		//Mise a 1 du signal PWM sur duree ETAT_HAUT
+		if ((err = gpio_direction_output(GPIO_SERVO, 1)) != 0) { 
+			gpio_free(GPIO_SERVO);
+			rtdm_printk(KERN_ALERT "%s.%s() : error servo 1 %d\n", THIS_MODULE->name, __FUNCTION__, err);
+		}
+		rtdm_task_sleep(ETAT_HAUT);	
+		
+		//Remise a 0 du signal PWM sur duree (PERIODE_TOT - ETAT_HAUT)
+		if ((err = gpio_direction_output(GPIO_SERVO, 0)) != 0) { 
+			gpio_free(GPIO_SERVO);
+			rtdm_printk(KERN_ALERT "%s.%s() : error servo 2 %d\n", THIS_MODULE->name, __FUNCTION__, err);
+		}
+		rtdm_task_sleep(PERIODE_TOT-ETAT_HAUT);
+		
+		nb_tour+=1;
 	}
 
 	rtdm_task_wait_period(NULL);
@@ -161,12 +188,57 @@ static int my_read_nrt_function (struct rtdm_fd *fd, void __user *buffer, size_t
 
 static int my_write_nrt_function(struct rtdm_fd *fd, const void __user *buffer, size_t lg)
 {
-  rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
+	rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
 
-  rtdm_mutex_lock(&my_mtx); //Demande du mutex pour ecrire dans les structures
+	rtdm_mutex_lock(&my_mtx); //Demande du mutex pour ecrire dans les structures
 
-  if (lg == sizeof(struct Order)) {
-    struct Order neworder;
+	if (lg > 0) {
+		if (rtdm_safe_copy_from_user(fd,
+						  &seuil_char,
+						  buffer, lg) != 0) {
+			rtdm_mutex_unlock(&my_mtx);
+			return -EFAULT;
+		}
+
+		switch (seuil_char){
+			case '1':
+				seuil_humi=40;
+				break;
+			case '2':
+				seuil_humi=50;
+				break;
+			case '3':
+				seuil_humi=60;
+				break;
+			case '4':
+				seuil_humi=70;
+				break;
+			case '5':
+				seuil_humi=80;
+				break;
+			default:
+				seuil_humi=60;
+		}
+
+		rtdm_printk(KERN_INFO "%s.%s() : driver receive %c, seuil_humi = %d\n", THIS_MODULE->name, __FUNCTION__, seuil_char, seuil_humi);
+
+		rtdm_task_set_period(&task_desc_dht11, 0, periode_us);
+
+	}
+	else {
+		rtdm_printk(KERN_INFO "%s.%s() : device receive error\n", THIS_MODULE->name, __FUNCTION__);
+	}
+
+	rtdm_printk("==> Received from Linux %d bytes : %.*s\n", lg, lg, buffer);
+
+	rtdm_mutex_unlock(&my_mtx);
+
+	return lg;
+
+  /*
+  if (lg > 0) {
+	  
+	struct Order neworder;
     neworder.temperature_min = 0;
     neworder.temperature_max = 20;
     neworder.periode_ms = 2000;
@@ -183,7 +255,8 @@ static int my_write_nrt_function(struct rtdm_fd *fd, const void __user *buffer, 
     order.temperature_min = neworder.temperature_min;
     order.temperature_max = neworder.temperature_max;
     order.periode_ms = order.periode_ms;
-    rtdm_task_set_period(&task_desc, 0, order.periode_ms*1000000);
+    rtdm_task_set_period(&task_desc_dht11, 0, order.periode_ms*1000000); //periode tache dht11 de 1ms
+	rtdm_task_set_period(&task_desc_servo, 0, order.periode_ms*20000000); //periode tache servo 20ms
   }
   else {
     printk(KERN_INFO "%s.%s() : message is not equivalent to 3 int.", THIS_MODULE->name, __FUNCTION__);
@@ -191,7 +264,7 @@ static int my_write_nrt_function(struct rtdm_fd *fd, const void __user *buffer, 
     return -1;
   }
   rtdm_mutex_unlock(&my_mtx);
-  return lg;
+  return lg;*/
 }
 
 static struct rtdm_driver my_rt_driver = {
@@ -236,13 +309,13 @@ static int __init initialisation(void) {
   rtdm_mutex_init(&my_mtx);         //Initialisation du mutex
   rtdm_dev_register(&my_rt_device); //Initialisation du device
 
-  if ( (err = rtdm_task_init(&task_desc, "rtdm-measure-task", task_measure, NULL, 30, order.periode_ms*1000000)) ) {
+  if ( (err = rtdm_task_init(&task_desc_dht11, "rtdm-measure-task", task_measure, NULL, 30, order.periode_ms*1000000)) ) {
 	rtdm_printk(KERN_INFO "%s.%s() : error rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
   }
   else {
 	rtdm_printk(KERN_INFO "%s.%s() : success rtdm_task_init\n", THIS_MODULE->name, __FUNCTION__);
   }
-
+  
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver initialised.", THIS_MODULE->name);
   return 0;
 }
@@ -251,7 +324,8 @@ static void __exit cloture(void) {
   printk(KERN_ALERT "from %s : RTDM DHT11 Driver currently closing.", THIS_MODULE->name);
 
   gpio_free(GPIO_DHT11);              //Libération du GPIO
-  rtdm_task_destroy(&task_desc);      //Destruction de la tâche
+  rtdm_task_destroy(&task_desc_dht11);      //Destruction de la tâche dht11
+  
   rtdm_mutex_destroy(&my_mtx);        //Destruction du mutex
   rtdm_dev_unregister(&my_rt_device); //Destruction du device
 
