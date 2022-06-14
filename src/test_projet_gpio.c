@@ -162,6 +162,8 @@ static int __init init_driver_oscillateur (void)
 	if ((err = gpio_request(GPIO_DHT11, THIS_MODULE->name)) != 0) {
 		return err;
 	}
+	
+	//MCU Start signal
 	if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms 
 		gpio_free(GPIO_DHT11);
 		return err;
@@ -183,7 +185,7 @@ static int __init init_driver_oscillateur (void)
 
 	count = 0;
 
-	while (gpio_get_value(GPIO_DHT11) != 0) {
+	while (gpio_get_value(GPIO_DHT11) != 0) { //Attente de la réponse du DHT11 avec un bit à 0 (sous 20-40us)
 		count++;
 		if (count > MAX_CNT) {
 			rtdm_printk(KERN_INFO "pullup by host 20-40us failed\n");
@@ -222,20 +224,22 @@ static int __init init_driver_oscillateur (void)
 
 	int average_cnt = total_cnt/(PULSES_CNT-1); //Mesure la moyenne des signaux a l'état bas et à l'état haut
 
-	char data[PULSES_CNT];
+	//char data[PULSES_CNT];
 
-	// En comparant avec moyenne, si état haut > état bas, c'est un 1
-	// Sépare les 41 caractères de la chaine en 5 octets
 	int m=0;
 	int data0, data1, data2, data3, data4;
 	for (i=3; i<=(2*PULSES_CNT); i+=2) {
 		int nb;
+		
+		// En comparant avec moyenne, si état haut > état bas, c'est un 1
 		if (pulse_cnt[i] > average_cnt) {
 			nb = 1;
 		}
 		else {
 			nb = 0;
 		}
+		
+		// Sépare les 41 caractères de la chaine en 5 octets séparés data0, data1, data2, data3, data4
 		if (m/8 == 0) {
 			data0 += nb << (m%8);
 		}
@@ -254,7 +258,7 @@ static int __init init_driver_oscillateur (void)
 		m++;
 	}
 
-	if ((fix_crc == TRUE) && (data4 != ((data0 + data1 + data2 + data3) & 0xFF)) {
+	/*if ((fix_crc == TRUE) && (data4 != ((data0 + data1 + data2 + data3) & 0xFF)) {
 		data4 = data4 ^ 0x01; //Pair ou impair ?
 		if ((data4 & 0x01) == TRUE) {
 			data = ; //a completer (ligne 182 du seeed_dht.py)
@@ -262,11 +266,11 @@ static int __init init_driver_oscillateur (void)
 		else {
 			data = ; //a completer (ligne 182 du seeed_dht.py)
 		}
-	}
+	}*/
 
 	if (data4 == ((data0 + data1 + data2 + data3) & 0xFF)) {
-		int humi = data0;
-		int temp = data2;
+		int humi = data0; //Affecte l'octet data0 pour l'info de l'humidité
+		int temp = data2; //Affecte l'octet data2 pour l'info de la température	
 
 	}
 	else {
