@@ -19,16 +19,14 @@
 #define TRUE 1
 #define FALSE 0
 #define MAX_CNT	85
+#define MSG_SIZE 4
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Brendan Signarbieux & Tom Ladune");
 MODULE_VERSION("Alpha 1.0");
 MODULE_DESCRIPTION("This module measures temperature and humidity thanks to the DHT11.");
 
-static struct Measures {      //Structure de donnée obtenue par le capteur DHT11
-    int temperature;
-    int humidity;
-} measures;
+static char measures[4];
 
 static struct Order {        //Structure de données des paramètres de fonctionnement du driver
   int temperature_min;
@@ -42,23 +40,21 @@ module_param(periode_us, int, 0644);
 rtdm_task_t task_desc;
 static rtdm_mutex_t my_mtx;
 static char temperature[2] ;
-static char a;
 
 rtdm_task_t task_desc;  //Definition de la tâche
 static rtdm_mutex_t my_mtx; //Definition du mutex
 
 void task_measure(void *arg) {
   rtdm_printk(KERN_INFO "%s.%s(): has launched for the first time.\n", THIS_MODULE->name, __FUNCTION__);
-  
+
   while(!rtdm_task_should_stop()){
-	  
-	int data[5] = { 0, 0, 0, 0, 0 };
- 	int dernier_etat = 1 ; 
+
+	char data[5] = { 0, 0, 0, 0, 0 };
+ 	int dernier_etat = 1 ;
 	uint8_t count = 0;
 	uint8_t j = 0, i;
 	int err;
-	data[0] = data[1] = data[2] = data[3] = data[4] = 0;
-	
+
 	//MCU Start signal
   	if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Envoi 1 20ms
 		gpio_free(GPIO_DHT11);
@@ -71,20 +67,20 @@ void task_measure(void *arg) {
   		rtdm_printk(KERN_ALERT "%s.%s() : error 2 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
   	rtdm_task_sleep(18000000);
-	
+
 	if ((err = gpio_direction_output(GPIO_DHT11, 1)) != 0) { //Remise à 1 pour 40us
 		gpio_free(GPIO_DHT11);
 		rtdm_printk(KERN_ALERT "%s.%s() : error 3 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
 	rtdm_task_sleep(38000);	 //Courte attente 38us
-	
+
   	if ((err = gpio_direction_input(GPIO_DHT11)) != 0) { //Mise en mode lecture
   		gpio_free(GPIO_DHT11);
   		rtdm_printk(KERN_ALERT "%s.%s() : error 4 %d\n", THIS_MODULE->name, __FUNCTION__, err);
   	}
-	
+
 	//rtdm_printk(KERN_ALERT "%s.%s() : GPIO waiting for DHT11\n", THIS_MODULE->name, __FUNCTION__);
-	
+
 	// Detecte chaque changement et lit donnees recues
 	for ( i = 0; i < MAX_CNT; i++ )
 	{
@@ -93,7 +89,7 @@ void task_measure(void *arg) {
 		{
 			count++;
 			rtdm_task_sleep(1000);
-			
+
 			if ( count == 255 )
 			{
 				break;
@@ -110,28 +106,28 @@ void task_measure(void *arg) {
 			//envoie chaque bit dans data et les sépare en 5 octets
 			data[j / 8] <<= 1;
 			if ( count > 8 )
-			{	
+			{
 				data[j / 8] |= 1;
 			}
 			j++;
 		}
 	}
-	
+
 	 //Verif lecture des 40 bits (8bit x 5 ) + verif checksum
 	if ( (j >= 40)  && (data[4] == ( (data[0] + data[1] + data[2] + data[3]) & 0xFF) ) )
 	{
-		rtdm_printk(KERN_INFO "Humidite = %d.%d %% Temperature = %d.%d *C \n",data[0], data[1], data[2], data[3]);	
-		temperature[0]=data[2] + '0';
-	    temperature[1]=data[3] + '0';
-		
-		measures.humidity = data[0]; //Affecte l'octet data[0] pour l'info de l'humidité
-  		measures.temperature = data[2]; //Affecte l'octet data[2] pour l'info de la température
-		
+		rtdm_printk(KERN_INFO "Humidite = %d.%d %% Temperature = %d.%d *C \n",data[0], data[1], data[2], data[3]);
+
+		measures[0] = data[0]; //Affecte l'octet data[0] pour l'info de l'humidité
+    measures[1] = data[1];
+  	measures[2] = data[2]; //Affecte l'octet data[2] pour l'info de la température
+    measures[3] = data[3];
+
 	}else  {
 		rtdm_printk( "Donnee recue erronnee\n" );
 	}
-	
-	rtdm_task_wait_period(NULL);	
+
+	rtdm_task_wait_period(NULL);
   }
 }
 
@@ -144,14 +140,13 @@ static void my_close_function(struct rtdm_fd *fd) {
   rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
 }
 
-static int my_read_nrt_function  (struct rtdm_fd *fd, void __user *buffer, size_t lg)
-{
+static int my_read_nrt_function (struct rtdm_fd *fd, void __user *buffer, size_t lg) {
   rtdm_printk(KERN_INFO "%s.%s()\n", THIS_MODULE->name, __FUNCTION__);
-
+  //char msg[MSG_SIZE];
   rtdm_mutex_lock(&my_mtx);
 
-  if (lg == sizeof(struct Measures)) {
-      if (rtdm_safe_copy_to_user(fd, buffer, &measures, lg) != 0) {
+  if (lg == MSG_SIZE) {
+      if (rtdm_safe_copy_to_user(fd, buffer, &measures, MSG_SIZE) != 0) {
         rtdm_printk(KERN_INFO "%s.%s()\n : Error in the copy of the measured data.", THIS_MODULE->name, __FUNCTION__);
         rtdm_mutex_unlock(&my_mtx);
         return -1;
@@ -226,8 +221,10 @@ static int __init initialisation(void) {
 
   int err;
   //Initialisation de la tâche
-  measures.temperature = 0;
-  measures.humidity = 10;
+  measures[0] = 0;
+  measures[1] = 0;
+  measures[2] = 10;
+  measures[3] = 0;
 
   order.temperature_min = 10;
   order.temperature_max = 20;
