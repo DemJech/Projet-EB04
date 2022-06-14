@@ -11,55 +11,43 @@
 #define MSG_SIZE 4
 #define TRUE 1
 
-void send_file_data(FILE* fp, int sockfd, struct sockaddr_in addr, char * msg) {
+void send_file_data(int sockfd, struct sockaddr_in addr, char * msg) {
   int n;
   // Sending the data
-  printf("[SENDING] Data: %d.%d;%d.%d\n", msg[0], msg[1], msg[2], msg[3]);
-
   n = sendto(sockfd, msg, MSG_SIZE, 0, (struct sockaddr*)&addr, sizeof(addr));
-  if (n == -1)
-  {
-    perror("[ERROR] sending data to the server.");
+  if (n == -1) {
+    perror("Could not send data to the server.");
     exit(1);
   }
   bzero(msg, MSG_SIZE);
 
-  // Sending the 'END'
+  // Envoie de 'END' pour signifier la fin du message
   strcpy(msg, "END");
   sendto(sockfd, msg, MSG_SIZE, 0, (struct sockaddr*)&addr, sizeof(addr));
-  fclose(fp);
 }
 
 int main(int argv, int **argc) {
 
-  // Defining the IP and Port
+  // Définition de l'IP et du port
   char *ip = "192.168.43.201";
   const int port = 8080;
 
-  // Defining variables
+  // Déclaration du socket
   int server_sockfd;
   struct sockaddr_in server_addr;
 
   int fd, ret;
   char msg[MSG_SIZE+1] = {0,0,0,0,0};
-  FILE * fic;
 
-  fic = fopen("./data.txt", "rwt");
-  if (fic == NULL) {
-    printf("Open error %d\n", 1);
-    exit(1);
-  }
-
-  fd = open("/dev/rtdm/rtdm_DHT11_0", O_RDONLY);
+  fd = open("/dev/rtdm/rtdm_DHT11_0", O_RDONLY); //Ouverture du driver
   if (fd < 0) {
     printf("Open error %d\n", fd);
     exit(fd);
   }
 
-  // Creating a UDP socket
+  // Création du socket UDP
   server_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-  if (server_sockfd < 0)
-  {
+  if (server_sockfd < 0) {
     perror("[ERROR] socket error");
     exit(1);
   }
@@ -68,22 +56,18 @@ int main(int argv, int **argc) {
   server_addr.sin_addr.s_addr = inet_addr(ip);
 
   while(TRUE) {
-    ret = read(fd, msg, sizeof(msg));
+    ret = read(fd, msg, MSG_SIZE);  //Lecture du driver
     if (ret <= 0) {
       printf("%d\n", msg[0]);
       printf("Read error %d\n", ret);
       exit(ret);
     }
     printf("humidity: %d.%d %%; temperature: %d.%d *C\n", msg[0], msg[1], msg[2], msg[3]);
-    fic = fopen("./data.txt", "rwt");
-    if (fic == NULL) {
-      printf("Open error %d\n", 1);
-      exit(1);
-    }
-    fprintf(fic, "%d.%d;%d.%d\n", msg[0], msg[1], msg[2], msg[3]);
-    send_file_data(fic, server_sockfd, server_addr, msg);
-    write(fd, msg, MSG_SIZE+1);
-    sleep(2);
+
+    fprintf(fic, "%d.%d;%d.%d\n", msg[0], msg[1], msg[2], msg[3]); //Ecriture des données
+    send_file_data(server_sockfd, server_addr, msg); //Envoie des données
+    write(fd, &msg, MSG_SIZE+1);  //Sans l'écriture, le programme bug, à la prochaine relecture
+    sleep(2); //Attente d'une nouvelle mesure
   }
   return EXIT_SUCCESS;
 }

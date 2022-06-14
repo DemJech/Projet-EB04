@@ -14,11 +14,15 @@ void write_file(int sockfd, struct sockaddr_in addr) {
   char buffer[SIZE];
   socklen_t addr_size;
 
-  fp = fopen(filename, "at");
+  fp = fopen(filename, "at"); //Ouverture du fichier
+  if (fp < 0) {
+    printf("Open error %d\n", fp);
+    exit(fp);
+  }
 
-  while(1) {
+  while(1) {//Réception des données tant que le "END" n'a pas été reçu
     addr_size = sizeof(addr);
-    n = recvfrom(sockfd, buffer, SIZE, 0, (struct sockaddr*) &addr, &addr_size);
+    recvfrom(sockfd, buffer, SIZE, 0, (struct sockaddr*) &addr, &addr_size);
 
     if (strcmp(buffer, "END") == 0) {
       printf("%s\t%d", buffer, strcmp(buffer, "END"));
@@ -32,19 +36,19 @@ void write_file(int sockfd, struct sockaddr_in addr) {
   }
 
   fclose(fp);
-  return;
 }
 
 int main(int argc, char ** argv) {
-  char *ip = "192.168.43.201";                       //Addr IP de rebouclage
+  int e;
+
+  //Définition de l'IP et du port
+  char *ip = "192.168.43.201";
   int port = 8080;
 
+  //Création du socket
   int server_sockfd;
   struct sockaddr_in server_addr, client_addr;
   char buffer[SIZE];
-
-  int e;
-
   server_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (server_sockfd < 0) {
     printf("[ERROR] Socket error, exit code: %d\n", server_sockfd);
@@ -56,6 +60,7 @@ int main(int argc, char ** argv) {
   server_addr.sin_port = htons(port);
   server_addr.sin_addr.s_addr = inet_addr(ip);
 
+  //Démarrage du serveur
   e = bind(server_sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr));
   if (e < 0) {
     printf("[ERROR] Bind error, exit code : %d\n", e);
@@ -64,11 +69,10 @@ int main(int argc, char ** argv) {
 
   printf("[STARTING] UDP File Server started.\n");
   while (TRUE) {
-    write_file(server_sockfd, client_addr);
+    write_file(server_sockfd, client_addr); //Ecriture des données
     sleep(2);
   }
 
-  printf("[SUCCESS] Data transfer complete.\n");
   printf("[CLOSING] Closing the server.\n");
   close(server_sockfd);
   return 0;

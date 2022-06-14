@@ -7,8 +7,7 @@
 #define SIZE 1024
 #define TRUE 1
 
-void send_file_data(FILE* fp, int sockfd, struct sockaddr_in addr)
-{
+void send_file_data(FILE* fp, int sockfd, struct sockaddr_in addr) {
   int n;
   char buffer[SIZE];
 
@@ -33,9 +32,7 @@ void send_file_data(FILE* fp, int sockfd, struct sockaddr_in addr)
   fclose(fp);
 }
 
-int main(void)
-{
-
+int main(void) {
   // Defining the IP and Port
   char *ip = "192.168.43.201";
   const int port = 8080;
