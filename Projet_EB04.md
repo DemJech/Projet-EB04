@@ -1,4 +1,4 @@
-# Projet EB04 : Brendan SIGNARBIEUX & Tom LADUNE
+# Projet EB04 : Tom LADUNE
 
 ## Obligations
 
